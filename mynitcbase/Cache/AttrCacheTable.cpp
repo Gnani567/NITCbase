@@ -52,3 +52,40 @@ void AttrCacheTable::recordToAttrCatEntry(union Attribute record[ATTRCAT_NO_ATTR
   // attribute offset
   attrCatEntry->offset = (int)record[ATTRCAT_OFFSET_INDEX].nVal;
 }
+
+/* returns the attribute with name `attrName` for the relation corresponding to relId
+NOTE: this function expects the caller to allocate memory for `*attrCatBuf`
+*/
+int AttrCacheTable::getAttrCatEntry(int relId, char attrName[ATTR_SIZE], AttrCatEntry* attrCatBuf) {
+
+  // Check that relId is valid
+  if (relId < 0 || relId >= MAX_OPEN)
+  {
+    return E_OUTOFBOUND;
+  }
+
+  // Check that the relation is open
+  if (attrCache[relId] == nullptr)
+  {
+    return E_RELNOTOPEN;
+  }
+
+  // Traverse the linked list of attributes
+  for (AttrCacheEntry* entry = attrCache[relId];entry != nullptr;entry = entry->next)
+  {
+
+    // Check whether the attribute name matches
+    if (strcmp(entry->attrCatEntry.attrName, attrName) == 0)
+    {
+
+      // Copy the attribute catalog entry
+      *attrCatBuf = entry->attrCatEntry;
+
+      return SUCCESS;
+    }
+  }
+
+  // Attribute not found
+  return E_ATTRNOTEXIST;
+}
+
