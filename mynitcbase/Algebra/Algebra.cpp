@@ -136,7 +136,7 @@ int Algebra::select(char srcRel[ATTR_SIZE], char targetRel[ATTR_SIZE],char attr[
       }
 
       if (attrCatEntry.attrType == NUMBER) {
-        printf(" %lf |", record[i].nVal);
+        printf(" %0.lf |", record[i].nVal);
       }
       else if (attrCatEntry.attrType == STRING) {
         printf(" %s |", record[i].sVal);
