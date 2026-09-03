@@ -71,74 +71,74 @@ int RecBuffer::getRecord(union Attribute *rec, int slotNum) {
   return SUCCESS;
 }
 
-// set the record at slotNum
 int RecBuffer::setRecord(union Attribute *rec, int slotNum) {
 
-  struct HeadInfo head;
+    unsigned char *bufferPtr;
 
-  // get the header
-  int ret = this->getHeader(&head);
+    int retVal = loadBlockAndGetBufferPtr(&bufferPtr);
 
-  if (ret != SUCCESS) {
-    return ret;
-  }
+    if (retVal != SUCCESS)
+        return retVal;
 
-  int attrCount = head.numAttrs;
-  int slotCount = head.numSlots;
+    HeadInfo head;
 
-  unsigned char *bufferPtr;
+    retVal = getHeader(&head);
 
-  // load the block using the buffer manager
-  ret = loadBlockAndGetBufferPtr(&bufferPtr);
+    if (retVal != SUCCESS)
+        return retVal;
 
-  if (ret != SUCCESS) {
-    return ret;
-  }
+    int numAttrs = head.numAttrs;
+    int numSlots = head.numSlots;
 
-  /*
-   * Record at slotNum will be at:
-   * HEADER_SIZE + slotMapSize + (recordSize * slotNum)
-   */
-  int recordSize = attrCount * ATTR_SIZE;
-  int slotMapSize = slotCount;
+    if (slotNum < 0 || slotNum >= numSlots)
+        return E_OUTOFBOUND;
 
-  unsigned char *slotPointer = bufferPtr + HEADER_SIZE +slotMapSize +(recordSize * slotNum);
+    int recordSize = ATTR_SIZE * numAttrs;
+    int slotMapSize = numSlots;
 
-  // store the record
-  memcpy(slotPointer, rec, recordSize);
+    unsigned char *recordPtr =
+        bufferPtr + HEADER_SIZE + slotMapSize +
+        (slotNum * recordSize);
 
-  // write the modified block back to disk
-  Disk::writeBlock(bufferPtr, this->blockNum);
+    memcpy(recordPtr, rec, recordSize);
 
-  return SUCCESS;
+    retVal = StaticBuffer::setDirtyBit(this->blockNum);
+
+    if (retVal != SUCCESS)
+        return retVal;
+
+    return SUCCESS;
 }
 
-// load a block to the buffer and get a pointer to it
 int BlockBuffer::loadBlockAndGetBufferPtr(unsigned char **buffPtr) {
 
-  // check whether the block is already present in the buffer
-  int bufferNum = StaticBuffer::getBufferNum(this->blockNum);
+    int bufferNum = StaticBuffer::getBufferNum(this->blockNum);
 
-  if (bufferNum == E_BLOCKNOTINBUFFER) {
+    if (bufferNum != E_BLOCKNOTINBUFFER) {
 
-    // get a free buffer
-    bufferNum = StaticBuffer::getFreeBuffer(this->blockNum);
+        for (int i = 0; i < BUFFER_CAPACITY; i++) {
+            if (i == bufferNum)
+                StaticBuffer::metainfo[i].timeStamp = 0;
+            else if (StaticBuffer::metainfo[i].free == false)
+                StaticBuffer::metainfo[i].timeStamp++;
+        }
 
-    if (bufferNum == E_OUTOFBOUND) {
-      return E_OUTOFBOUND;
+    } else {
+
+        bufferNum = StaticBuffer::getFreeBuffer(this->blockNum);
+
+        if (bufferNum == E_OUTOFBOUND)
+            return E_OUTOFBOUND;
+
+        Disk::readBlock(
+            StaticBuffer::blocks[bufferNum],
+            this->blockNum
+        );
     }
 
-    // read the block from disk into the buffer
-    Disk::readBlock(
-        StaticBuffer::blocks[bufferNum],
-        this->blockNum
-    );
-  }
+    *buffPtr = StaticBuffer::blocks[bufferNum];
 
-  // store the pointer to this buffer in *buffPtr
-  *buffPtr = StaticBuffer::blocks[bufferNum];
-
-  return SUCCESS;
+    return SUCCESS;
 }
 
 int RecBuffer::getSlotMap(unsigned char *slotMap) {

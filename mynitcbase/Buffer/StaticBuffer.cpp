@@ -8,52 +8,75 @@ struct BufferMetaInfo StaticBuffer::metainfo[BUFFER_CAPACITY];
 
 StaticBuffer::StaticBuffer() {
 
-  // initialise all blocks as free
-  for (int bufferIndex = 0;bufferIndex < BUFFER_CAPACITY;bufferIndex++) {
-
-    metainfo[bufferIndex].free = true;
-  }
+    for (int bufferIndex = 0; bufferIndex < BUFFER_CAPACITY; bufferIndex++) {
+        metainfo[bufferIndex].free = true;
+        metainfo[bufferIndex].dirty = false;
+        metainfo[bufferIndex].timeStamp = -1;
+        metainfo[bufferIndex].blockNum = -1;
+    }
 }
 
-/*
-At this stage, we are not writing back from the buffer to the disk since we are
-not modifying the buffer. So, we will define an empty destructor for now. In
-subsequent stages, we will implement the write-back functionality here.
-*/
-StaticBuffer::~StaticBuffer() {}
+// write back all modified blocks on system exit
+StaticBuffer::~StaticBuffer() {
 
+    for (int bufferIndex = 0; bufferIndex < BUFFER_CAPACITY; bufferIndex++) {
+        if (metainfo[bufferIndex].free == false &&
+            metainfo[bufferIndex].dirty == true) {
+
+            Disk::writeBlock(
+                blocks[bufferIndex],
+                metainfo[bufferIndex].blockNum
+            );
+        }
+    }
+}
 
 int StaticBuffer::getFreeBuffer(int blockNum) {
 
-  // check whether blockNum is valid
-  if (blockNum < 0 || blockNum >= DISK_BLOCKS) {
-    return E_OUTOFBOUND;
-  }
+    if (blockNum <= 0 || blockNum >= DISK_BLOCKS)
+        return E_OUTOFBOUND;
 
-  int allocatedBuffer = E_OUTOFBOUND;
-
-  // iterate through all the blocks in the StaticBuffer
-  // find the first free block in the buffer
-  for (int bufferIndex = 0;bufferIndex < BUFFER_CAPACITY;bufferIndex++) {
-
-    if (metainfo[bufferIndex].free) {
-      allocatedBuffer = bufferIndex;
-      break;
+    // Increase timeStamp of occupied buffers
+    for (int i = 0; i < BUFFER_CAPACITY; i++) {
+        if (metainfo[i].free == false)
+            metainfo[i].timeStamp++;
     }
-  }
 
-  // no free buffer was found
-  if (allocatedBuffer == E_OUTOFBOUND) {
-    return E_OUTOFBOUND;
-  }
+    int bufferNum = -1;
 
-  // mark the buffer as occupied
-  metainfo[allocatedBuffer].free = false;
+    // Find a free buffer
+    for (int i = 0; i < BUFFER_CAPACITY; i++) {
+        if (metainfo[i].free == true) {
+            bufferNum = i;
+            break;
+        }
+    }
 
-  // store the disk block number in the metadata
-  metainfo[allocatedBuffer].blockNum = blockNum;
+    // No free buffer: find the oldest buffer
+    if (bufferNum == -1) {
+        int maxTimeStamp = -1;
 
-  return allocatedBuffer;
+        for (int i = 0; i < BUFFER_CAPACITY; i++) {
+            if (metainfo[i].timeStamp > maxTimeStamp) {
+                maxTimeStamp = metainfo[i].timeStamp;
+                bufferNum = i;
+            }
+        }
+
+        if (metainfo[bufferNum].dirty == true) {
+            Disk::writeBlock(
+                blocks[bufferNum],
+                metainfo[bufferNum].blockNum
+            );
+        }
+    }
+
+    metainfo[bufferNum].free = false;
+    metainfo[bufferNum].dirty = false;
+    metainfo[bufferNum].blockNum = blockNum;
+    metainfo[bufferNum].timeStamp = 0;
+
+    return bufferNum;
 }
 
 /*
@@ -78,4 +101,19 @@ int StaticBuffer::getBufferNum(int blockNum) {
 
   // block is not currently present in the buffer
   return E_BLOCKNOTINBUFFER;
+}
+
+int StaticBuffer::setDirtyBit(int blockNum) {
+
+    int bufferNum = getBufferNum(blockNum);
+
+    if (bufferNum == E_BLOCKNOTINBUFFER)
+        return E_BLOCKNOTINBUFFER;
+
+    if (bufferNum == E_OUTOFBOUND)
+        return E_OUTOFBOUND;
+
+    metainfo[bufferNum].dirty = true;
+
+    return SUCCESS;
 }
