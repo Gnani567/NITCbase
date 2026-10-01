@@ -92,8 +92,6 @@ OpenRelTable::OpenRelTable(){
     
     AttrCacheTable::attrCache[ATTRCAT_RELID] = head;
 
-    
-
     OpenRelTable::tableMetaInfo[RELCAT_RELID].free = false;
     strcpy(OpenRelTable::tableMetaInfo[RELCAT_RELID].relName,RELCAT_RELNAME);
 
@@ -190,8 +188,7 @@ int OpenRelTable::openRel(char relName[ATTR_SIZE]){
     strcpy(tableMetaInfo[relId].relName,relName);
 
     return relId;
-
-    }
+}
 
 OpenRelTable::~OpenRelTable(){
     for(int i = 2;i < MAX_OPEN;i++){
@@ -228,11 +225,15 @@ OpenRelTable::~OpenRelTable(){
 } 
 
 int OpenRelTable::closeRel(int relId){
+    // confirm that rel-id fits the following conditions
+    //     2 <=relId < MAX_OPEN
+    //     does not correspond to a free slot
+
     if(relId == RELCAT_RELID || relId == ATTRCAT_RELID){
         return E_NOTPERMITTED;
     }
 
-    if(relId < 0 || relId >= MAX_OPEN){
+    if(relId < 2 || relId >= MAX_OPEN){
         return E_OUTOFBOUND;
     }
 
@@ -240,8 +241,34 @@ int OpenRelTable::closeRel(int relId){
         return E_RELNOTOPEN;
     }
 
+    /****** Releasing the Relation Cache entry of the relation ******/
+
+    if(RelCacheTable::relCache[relId]->dirty)
+    {
+        RelCacheEntry *relCacheEntry = RelCacheTable::relCache[relId];
+
+        Attribute record[RELCAT_NO_ATTRS];
+
+        RelCacheTable::relCatEntryToRecord(
+            &relCacheEntry->relCatEntry,
+            record
+        );
+
+        RecId recId = relCacheEntry->recId;
+
+        RecBuffer relCatBlock(recId.block);
+
+        int ret = relCatBlock.setRecord(record, recId.slot);
+
+        if(ret != SUCCESS){
+            return ret;
+        }
+    }
+
     free(RelCacheTable::relCache[relId]);
     RelCacheTable::relCache[relId] = nullptr;
+
+    /****** Releasing the Attribute Cache entry of the relation ******/
 
     AttrCacheEntry* curr = AttrCacheTable::attrCache[relId];
 
@@ -252,6 +279,8 @@ int OpenRelTable::closeRel(int relId){
     }
 
     AttrCacheTable::attrCache[relId] = nullptr;
+
+    /****** Set the Open Relation Table entry of the relation as free ******/
 
     tableMetaInfo[relId].free = true;
 

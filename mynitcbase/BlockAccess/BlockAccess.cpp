@@ -295,3 +295,186 @@ int BlockAccess::renameAttribute(char relName[ATTR_SIZE],
 
     return SUCCESS;
 }
+
+int BlockAccess::insert(int relId, Attribute *record) {
+    // get the relation catalog entry from relation cache
+    RelCatEntry relCatEntry;
+    int ret = RelCacheTable::getRelCatEntry(relId, &relCatEntry);
+
+    if (ret != SUCCESS)
+        return ret;
+
+    int blockNum = relCatEntry.firstBlk;
+
+    // rec_id will be used to store where the new record will be inserted
+    RecId rec_id = {-1, -1};
+
+    int numOfSlots = relCatEntry.numSlotsPerBlk;
+    int numOfAttributes = relCatEntry.numAttrs;
+
+    int prevBlockNum = -1;
+
+    /*
+        Traversing the linked list of existing record blocks of the relation
+        until a free slot is found OR
+        until the end of the list is reached
+    */
+    while (blockNum != -1) {
+        RecBuffer recBuffer(blockNum);
+
+        HeadInfo head;
+        ret = recBuffer.getHeader(&head);
+
+        if (ret != SUCCESS)
+            return ret;
+
+        unsigned char slotMap[numOfSlots];
+
+        ret = recBuffer.getSlotMap(slotMap);
+
+        if (ret != SUCCESS)
+            return ret;
+
+        for (int i = 0; i < numOfSlots; i++) {
+            if (slotMap[i] == SLOT_UNOCCUPIED) {
+                rec_id.block = blockNum;
+                rec_id.slot = i;
+                break;
+            }
+        }
+
+        if (rec_id.block != -1)
+            break;
+
+        prevBlockNum = blockNum;
+        blockNum = head.rblock;
+    }
+
+    if (rec_id.block == -1) {
+        if (relId == RELCAT_RELID)
+            return E_MAXRELATIONS;
+
+        RecBuffer newRecBlock;
+
+        ret = newRecBlock.getBlockNum();
+
+        if (ret == E_DISKFULL)
+            return E_DISKFULL;
+
+        if (ret < 0)
+            return ret;
+
+        rec_id.block = ret;
+        rec_id.slot = 0;
+
+        HeadInfo head;
+        head.blockType = REC;
+        head.pblock = -1;
+        head.lblock = prevBlockNum;
+        head.rblock = -1;
+        head.numEntries = 0;
+        head.numAttrs = numOfAttributes;
+        head.numSlots = numOfSlots;
+
+        ret = newRecBlock.setHeader(&head);
+
+        if (ret != SUCCESS)
+            return ret;
+
+        unsigned char slotMap[numOfSlots];
+
+        for (int i = 0; i < numOfSlots; i++)
+            slotMap[i] = SLOT_UNOCCUPIED;
+
+        ret = newRecBlock.setSlotMap(slotMap);
+
+        if (ret != SUCCESS)
+            return ret;
+
+        if (prevBlockNum != -1) {
+            RecBuffer prevBlock(prevBlockNum);
+
+            HeadInfo prevHead;
+
+            ret = prevBlock.getHeader(&prevHead);
+
+            if (ret != SUCCESS)
+                return ret;
+
+            prevHead.rblock = rec_id.block;
+
+            ret = prevBlock.setHeader(&prevHead);
+
+            if (ret != SUCCESS)
+                return ret;
+        }
+        else {
+            relCatEntry.firstBlk = rec_id.block;
+
+            ret = RelCacheTable::setRelCatEntry(
+                relId,
+                &relCatEntry
+            );
+
+            if (ret != SUCCESS)
+                return ret;
+        }
+
+        relCatEntry.lastBlk = rec_id.block;
+
+        ret = RelCacheTable::setRelCatEntry(
+            relId,
+            &relCatEntry
+        );
+
+        if (ret != SUCCESS)
+            return ret;
+    }
+
+    RecBuffer recBuffer(rec_id.block);
+
+    ret = recBuffer.setRecord(record, rec_id.slot);
+
+    if (ret != SUCCESS)
+        return ret;
+
+    unsigned char slotMap[numOfSlots];
+
+    ret = recBuffer.getSlotMap(slotMap);
+
+    if (ret != SUCCESS)
+        return ret;
+
+    slotMap[rec_id.slot] = SLOT_OCCUPIED;
+
+    ret = recBuffer.setSlotMap(slotMap);
+
+    if (ret != SUCCESS)
+        return ret;
+
+    HeadInfo head;
+
+    ret = recBuffer.getHeader(&head);
+
+    if (ret != SUCCESS)
+        return ret;
+
+    head.numEntries++;
+
+    ret = recBuffer.setHeader(&head);
+
+    if (ret != SUCCESS)
+        return ret;
+
+    relCatEntry.numRecs++;
+
+    ret = RelCacheTable::setRelCatEntry(
+        relId,
+        &relCatEntry
+    );
+
+    if (ret != SUCCESS)
+        return ret;
+
+    return SUCCESS;
+}

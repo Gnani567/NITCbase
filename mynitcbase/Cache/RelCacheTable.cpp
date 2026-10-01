@@ -108,3 +108,41 @@ int RelCacheTable::resetSearchIndex(int relId) {
   RecId searchIndex = {-1, -1};
   return setSearchIndex(relId, &searchIndex);
 }
+
+int RelCacheTable::setRelCatEntry(int relId, RelCatEntry *relCatBuf) {
+
+  if (relId < 0 || relId >= MAX_OPEN) {
+    return E_OUTOFBOUND;
+  }
+
+  if (relCache[relId] == nullptr) {
+    return E_RELNOTOPEN;
+  }
+
+  relCache[relId]->relCatEntry = *relCatBuf;
+
+  relCache[relId]->dirty = true;
+
+  return SUCCESS;
+}
+
+void RelCacheTable::relCatEntryToRecord(RelCatEntry *relCatEntry, union Attribute record[RELCAT_NO_ATTRS]) {
+
+  // Relation name
+  strcpy(record[RELCAT_REL_NAME_INDEX].sVal, relCatEntry->relName);
+
+  // Number of attributes
+  record[RELCAT_NO_ATTRIBUTES_INDEX].nVal = relCatEntry->numAttrs;
+
+  // Number of records
+  record[RELCAT_NO_RECORDS_INDEX].nVal = relCatEntry->numRecs;
+
+  // First block containing relation records
+  record[RELCAT_FIRST_BLOCK_INDEX].nVal = relCatEntry->firstBlk;
+
+  // Last block containing relation records
+  record[RELCAT_LAST_BLOCK_INDEX].nVal = relCatEntry->lastBlk;
+
+  // Number of slots per block
+  record[RELCAT_NO_SLOTS_PER_BLOCK_INDEX].nVal = relCatEntry->numSlotsPerBlk;
+}
