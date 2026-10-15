@@ -347,3 +347,23 @@ int BlockBuffer::getFreeBlock(int blockType){
     // return block number of the free block.
     return this->blockNum;
 }
+
+void BlockBuffer::releaseBlock(){
+
+    if(this->blockNum == INVALID_BLOCKNUM)
+        return;
+
+    // get the buffer number of the buffer assigned to the block
+    int bufferNum = StaticBuffer::getBufferNum(this->blockNum);
+
+    // if the block is present in the buffer, free the buffer
+    if(bufferNum != E_BLOCKNOTINBUFFER && bufferNum != E_OUTOFBOUND){
+        StaticBuffer::metainfo[bufferNum].free = true;
+    }
+
+    // free the block in disk
+    StaticBuffer::blockAllocMap[this->blockNum] = UNUSED_BLK;
+
+    // set the object's blockNum to INVALID_BLOCK (-1)
+    this->blockNum = INVALID_BLOCKNUM;
+}

@@ -190,21 +190,69 @@ int OpenRelTable::openRel(char relName[ATTR_SIZE]){
     return relId;
 }
 
-OpenRelTable::~OpenRelTable(){
-    for(int i = 2;i < MAX_OPEN;i++){
+OpenRelTable::~OpenRelTable() {
+
+    // Close all open relations
+    for(int i = 2; i < MAX_OPEN; i++){
         if(!tableMetaInfo[i].free){
             OpenRelTable::closeRel(i);
         }
     }
 
-    free(RelCacheTable::relCache[RELCAT_RELID]);
-    free(RelCacheTable::relCache[ATTRCAT_RELID]);
+    /**** Closing the catalog relations in the relation cache ****/
 
-    RelCacheTable::relCache[RELCAT_RELID] = nullptr;
+    // Write back ATTRIBUTECAT cache entry
+    if(RelCacheTable::relCache[ATTRCAT_RELID]->dirty){
+
+        RelCacheEntry *relCacheEntry =
+            RelCacheTable::relCache[ATTRCAT_RELID];
+
+        Attribute record[RELCAT_NO_ATTRS];
+
+        RelCacheTable::relCatEntryToRecord(
+            &relCacheEntry->relCatEntry,
+            record
+        );
+
+        RecId recId = relCacheEntry->recId;
+
+        RecBuffer relCatBlock(recId.block);
+
+        relCatBlock.setRecord(record, recId.slot);
+    }
+
+    free(RelCacheTable::relCache[ATTRCAT_RELID]);
     RelCacheTable::relCache[ATTRCAT_RELID] = nullptr;
 
-    AttrCacheEntry *curr = AttrCacheTable::attrCache[RELCAT_RELID];
-    
+
+    // Write back RELATIONCAT cache entry
+    if(RelCacheTable::relCache[RELCAT_RELID]->dirty){
+
+        RelCacheEntry *relCacheEntry =
+            RelCacheTable::relCache[RELCAT_RELID];
+
+        Attribute record[RELCAT_NO_ATTRS];
+
+        RelCacheTable::relCatEntryToRecord(
+            &relCacheEntry->relCatEntry,
+            record
+        );
+
+        RecId recId = relCacheEntry->recId;
+
+        RecBuffer relCatBlock(recId.block);
+
+        relCatBlock.setRecord(record, recId.slot);
+    }
+
+    free(RelCacheTable::relCache[RELCAT_RELID]);
+    RelCacheTable::relCache[RELCAT_RELID] = nullptr;
+
+
+    // Free catalog attribute cache entries
+    AttrCacheEntry *curr =
+        AttrCacheTable::attrCache[RELCAT_RELID];
+
     while(curr != nullptr){
         AttrCacheEntry *next = curr->next;
         free(curr);
@@ -221,8 +269,7 @@ OpenRelTable::~OpenRelTable(){
 
     AttrCacheTable::attrCache[RELCAT_RELID] = nullptr;
     AttrCacheTable::attrCache[ATTRCAT_RELID] = nullptr;
-
-} 
+}
 
 int OpenRelTable::closeRel(int relId){
     // confirm that rel-id fits the following conditions
