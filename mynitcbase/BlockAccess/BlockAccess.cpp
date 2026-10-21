@@ -441,25 +441,12 @@ int BlockAccess::insert(int relId, Attribute *record) {
     if (ret != SUCCESS)
             return ret;
 
-    printf("Before: ");
-    for (int i = 0; i < numOfSlots; i++)
-        printf("%c ", slotMap[i]);
-    printf("\n");
-
-    printf("slot: %d\n", rec_id.slot);
-    
-
     ret = recBuffer.setRecord(record, rec_id.slot);
 
     if (ret != SUCCESS)
         return ret;
 
     slotMap[rec_id.slot] = SLOT_OCCUPIED;
-
-    printf("After:  ");
-    for (int i = 0; i < numOfSlots; i++)
-        printf("%c ", slotMap[i]);
-    printf("\n");
 
     ret = recBuffer.setSlotMap(slotMap);
 
