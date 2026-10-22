@@ -7,6 +7,8 @@
 #include "../define/constants.h"
 #include "StaticBuffer.h"
 
+extern int comparisonCount;
+
 struct HeadInfo {
   int32_t blockType;
   int32_t pblock;

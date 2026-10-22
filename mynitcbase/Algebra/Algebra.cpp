@@ -3,6 +3,9 @@
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
+#include<bits/stdc++.h>
+#include <iostream>
+#include "../Buffer/BlockBuffer.h"
 
 bool isNumber(char *str) {
   int len;
@@ -228,20 +231,16 @@ int Algebra::insert(char relName[ATTR_SIZE], int nAttrs, char record[][ATTR_SIZE
 // }                                          //this is valid only to null and which is wrong after stage 8
 
 int Algebra::select(char srcRel[ATTR_SIZE], char targetRel[ATTR_SIZE], char attr[ATTR_SIZE], int op, char strVal[ATTR_SIZE]) {
-    // Get source relation id
-    int srcRelId = OpenRelTable::getRelId(srcRel);
 
-    if (srcRelId == E_RELNOTOPEN)
+    comparisonCount = 0;
+    int srcRelId = OpenRelTable::getRelId(srcRel);
+    if (srcRelId < 0)
         return E_RELNOTOPEN;
 
-    // Get condition attribute
     AttrCatEntry attrCatEntry;
     int ret = AttrCacheTable::getAttrCatEntry(srcRelId, attr, &attrCatEntry);
-
     if (ret != SUCCESS)
         return E_ATTRNOTEXIST;
-
-    /*** Convert strVal to an Attribute ***/
 
     Attribute attrVal;
     int type = attrCatEntry.attrType;
@@ -256,22 +255,17 @@ int Algebra::select(char srcRel[ATTR_SIZE], char targetRel[ATTR_SIZE], char attr
         strcpy(attrVal.sVal, strVal);
     }
 
-    /*** Create target relation ***/
-
     RelCatEntry srcRelCatEntry;
-
     ret = RelCacheTable::getRelCatEntry(srcRelId, &srcRelCatEntry);
     if (ret != SUCCESS)
         return ret;
 
     int src_nAttrs = srcRelCatEntry.numAttrs;
-
     char attr_names[src_nAttrs][ATTR_SIZE];
     int attr_types[src_nAttrs];
 
     for (int i = 0; i < src_nAttrs; i++) {
         AttrCatEntry entry;
-
         ret = AttrCacheTable::getAttrCatEntry(srcRelId, i, &entry);
         if (ret != SUCCESS)
             return ret;
@@ -280,23 +274,15 @@ int Algebra::select(char srcRel[ATTR_SIZE], char targetRel[ATTR_SIZE], char attr
         attr_types[i] = entry.attrType;
     }
 
-    // Create target relation
-    ret = Schema::createRel(targetRel,src_nAttrs,attr_names,attr_types);
-
+    ret = Schema::createRel(targetRel, src_nAttrs, attr_names, attr_types);
     if (ret != SUCCESS)
         return ret;
 
-    // Open target relation
     int targetRelId = OpenRelTable::openRel(targetRel);
-
     if (targetRelId < 0) {
-        ret = Schema::deleteRel(targetRel);
-        return ret;
+        Schema::deleteRel(targetRel);
+        return targetRelId;
     }
-
-    /*** Select and insert records ***/
-
-    Attribute record[src_nAttrs];
 
     ret = RelCacheTable::resetSearchIndex(srcRelId);
     if (ret != SUCCESS) {
@@ -305,14 +291,17 @@ int Algebra::select(char srcRel[ATTR_SIZE], char targetRel[ATTR_SIZE], char attr
         return ret;
     }
 
-    while (true) {
-        ret = BlockAccess::search( srcRelId, record, attr, attrVal, op);
+    ret = AttrCacheTable::resetSearchIndex(srcRelId, attr);
+    if (ret != SUCCESS) {
+        Schema::closeRel(targetRel);
+        Schema::deleteRel(targetRel);
+        return ret;
+    }
 
-        if (ret != SUCCESS)
-            break;
+    Attribute record[src_nAttrs];
 
+    while ((ret = BlockAccess::search(srcRelId, record, attr, attrVal, op)) == SUCCESS) {
         ret = BlockAccess::insert(targetRelId, record);
-
         if (ret != SUCCESS) {
             Schema::closeRel(targetRel);
             Schema::deleteRel(targetRel);
@@ -320,7 +309,14 @@ int Algebra::select(char srcRel[ATTR_SIZE], char targetRel[ATTR_SIZE], char attr
         }
     }
 
-    // Close target relation
+    std::cout << "Number of comparisons: " << comparisonCount << std::endl;
+
+    if (ret != E_NOTFOUND) {
+        Schema::closeRel(targetRel);
+        Schema::deleteRel(targetRel);
+        return ret;
+    }
+
     ret = Schema::closeRel(targetRel);
     if (ret != SUCCESS)
         return ret;
