@@ -1,0 +1,91 @@
+int Algebra::select(char srcRel[ATTR_SIZE], char targetRel[ATTR_SIZE], char attr[ATTR_SIZE], int op, char strVal[ATTR_SIZE]) {
+  int srcRelId = OpenRelTable::getRelId(srcRel);      // we'll implement this later
+  if (srcRelId == E_RELNOTOPEN) {
+    return E_RELNOTOPEN;
+  }
+
+  AttrCatEntry attrCatEntry;
+  int ret = AttrCacheTable::getAttrCatEntry(srcRelId, attr, &attrCatEntry);
+  if (ret == E_ATTRNOTEXIST) {
+    return E_ATTRNOTEXIST;
+  }
+
+  
+  /*** Convert strVal (string) to an attribute of data type NUMBER or STRING ***/
+  int type = attrCatEntry.attrType;
+  Attribute attrVal;
+  if (type == NUMBER) {
+    if (isNumber(strVal)) {       // the isNumber() function is implemented below
+      attrVal.nVal = atof(strVal);
+    } else {
+      return E_ATTRTYPEMISMATCH;
+    }
+  } else if (type == STRING) {
+    strcpy(attrVal.sVal, strVal);
+  }
+
+  /*** Selecting records from the source relation ***/
+
+  // Before calling the search function, reset the search to start from the first hit
+  // using RelCacheTable::resetSearchIndex()
+  RelCacheTable::resetSearchIndex(srcRelId);
+
+  RelCatEntry relCatEntry;
+  ret=RelCacheTable::getRelCatEntry(srcRelId, &relCatEntry);
+  if(ret!=SUCCESS){
+    return ret;
+  }
+  int src_nattrs=relCatEntry.numAttrs;
+  // get relCatEntry using RelCacheTable::getRelCatEntry()
+
+  /************************
+  The following code prints the contents of a relation directly to the output
+  console. Direct console output is not permitted by the actual the NITCbase
+  specification and the output can only be inserted into a new relation. We will
+  be modifying it in the later stages to match the specification.
+  ************************/
+  printf("|");
+  for (int i = 0; i < relCatEntry.numAttrs; ++i) {
+    AttrCatEntry attrCatEntry;
+    
+    ret=AttrCacheTable::getAttrCatEntry(srcRelId, i, &attrCatEntry);
+    if(ret!=SUCCESS){
+      return ret;
+    }
+    // get attrCatEntry at offset i using AttrCacheTable::getAttrCatEntry()
+
+    printf(" %s |", attrCatEntry.attrName);
+  }
+printf("\n");
+  while (true) {
+    RecId searchRes = BlockAccess::linearSearch(srcRelId, attr, attrVal, op);
+
+    if (searchRes.block != -1 && searchRes.slot != -1) {
+        Attribute record[src_nattrs];
+        RecBuffer recBuffer(searchRes.block);
+        ret=recBuffer.getRecord(record, searchRes.slot);
+        if(ret!=SUCCESS){
+          return ret;
+        }
+        printf("|");
+        for (int i = 0; i < src_nattrs; ++i) {
+          AttrCatEntry attrCatEntry;
+          AttrCacheTable::getAttrCatEntry(srcRelId, i, &attrCatEntry);
+          if(attrCatEntry.attrType == NUMBER) {
+            printf(" %d |", (int)record[i].nVal);
+          } else if (attrCatEntry.attrType == STRING) {
+            printf(" %s |", record[i].sVal);
+          }
+      // get the record at searchRes using BlockBuffer.getRecord
+      // print the attribute values in the same format as above
+    }
+  } else {
+      
+      // (all records over)
+
+      break;
+    }
+    printf("\n");
+  }
+  return SUCCESS;
+}
